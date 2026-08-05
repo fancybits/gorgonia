@@ -138,6 +138,9 @@ func (op sizeOp) Do(inputs ...Value) (retVal Value, err error) {
 			retVal = NewI32(int32(size))
 		case tensor.Uint8:
 			retVal = NewU8(uint8(size))
+		case tensor.Bool:
+			// bools are special - see the Scalar case above
+			retVal = NewI(size)
 		default:
 			return nil, errors.Errorf(nyiFail, "sizeOf.Do()", t.Dtype())
 		}
