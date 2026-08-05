@@ -42,14 +42,35 @@ func (o scalarBinOp) String() string                 { return o.ʘBinaryOperator
 // as scalarBinOp.Do expect boxed scalar values, but some code paths
 // legitimately produce 0-d *tensor.Dense values that are scalar by shape
 // and by static type, without being boxed. It returns false if v is not a
-// *tensor.Dense, or is not scalar-shaped.
+// *tensor.Dense, is not scalar-shaped, or is a dtype scalarBinOp.Do doesn't
+// handle - in which case the caller's existing "Unhandled Scalar Type"
+// path should still fire, rather than panicking via anyToScalar's default
+// arm (anyToScalar panics on unhandled types; it is intentionally not
+// used here). The dtypes below are exactly the ones scalarBinOp.Do's type
+// switch handles.
 func denseToScalar(v Value) (Scalar, bool) {
 	d, ok := v.(*tensor.Dense)
 	if !ok || !d.IsScalar() {
 		return nil, false
 	}
-	s, _ := anyToScalar(d.ScalarValue())
-	return s, true
+	switch sv := d.ScalarValue().(type) {
+	case float64:
+		return NewF64(sv), true
+	case float32:
+		return NewF32(sv), true
+	case int:
+		return NewI(sv), true
+	case int32:
+		return NewI32(sv), true
+	case int64:
+		return NewI64(sv), true
+	case byte:
+		return NewU8(sv), true
+	case bool:
+		return NewB(sv), true
+	default:
+		return nil, false
+	}
 }
 
 func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
@@ -58,11 +79,14 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 	}
 
 	v0, v1 := vals[0], vals[1]
+	var wasDense bool
 	if s, ok := denseToScalar(v0); ok {
 		v0 = s
+		wasDense = true
 	}
 	if s, ok := denseToScalar(v1); ok {
 		v1 = s
+		wasDense = true
 	}
 
 	at := TypeOf(v0)
@@ -312,6 +336,17 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 	}
 
 	retVal, _ = anyToScalar(r)
+
+	// If either input arrived as a 0-d *tensor.Dense, keep Dense values
+	// Dense: re-box the boxed Scalar result as a 0-d *tensor.Dense so
+	// callers that fed in Dense values get Dense values back out. Pure
+	// gorgonia callers (both inputs already boxed Scalars) are unaffected -
+	// they keep getting a boxed Scalar out, exactly as before.
+	if wasDense {
+		if sc, ok := retVal.(Scalar); ok {
+			retVal = tensor.New(tensor.FromScalar(sc.Data()))
+		}
+	}
 	return
 }
 
