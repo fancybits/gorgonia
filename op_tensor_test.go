@@ -347,6 +347,43 @@ func TestConcatOp(t *testing.T) {
 	assert.True(ValueEq(xx.Value(), aa.Value()))
 }
 
+func TestSizeOp_Do_Bool(t *testing.T) {
+	assert := assert.New(t)
+
+	bt := tensor.New(tensor.WithShape(2, 3), tensor.WithBacking([]bool{true, false, true, false, true, false}))
+
+	op := sizeOp{axis: 1, d: 2}
+	retVal, err := op.Do(bt)
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	assert.Equal(NewI(3), retVal)
+}
+
+func TestSizeOf_Bool(t *testing.T) {
+	assert := assert.New(t)
+
+	g := NewGraph()
+	x := NewMatrix(g, Bool, WithShape(2, 3), WithName("x"))
+	sz, err := SizeOf(1, x)
+	if err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	bt := tensor.New(tensor.WithShape(2, 3), tensor.WithBacking([]bool{true, false, true, false, true, false}))
+	Let(x, bt)
+
+	m := NewTapeMachine(g)
+	defer m.Close()
+
+	if err = m.RunAll(); err != nil {
+		t.Fatalf("%+v", err)
+	}
+
+	assert.Equal(NewI(3), sz.Value())
+}
+
 func Test_atOp_WriteHash(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
