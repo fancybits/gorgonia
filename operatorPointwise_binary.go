@@ -37,22 +37,45 @@ func (o scalarBinOp) binOpType() ʘBinaryOperatorType { return o.ʘBinaryOperato
 func (o scalarBinOp) isArith() bool                  { return o.ʘBinaryOperatorType.isArith() }
 func (o scalarBinOp) String() string                 { return o.ʘBinaryOperatorType.String() }
 
+// denseToScalar normalizes a 0-d (scalar-shaped) *tensor.Dense into its
+// corresponding boxed Scalar value (e.g. *F64, *F32, *I, ...). Callers such
+// as scalarBinOp.Do expect boxed scalar values, but some code paths
+// legitimately produce 0-d *tensor.Dense values that are scalar by shape
+// and by static type, without being boxed. It returns false if v is not a
+// *tensor.Dense, or is not scalar-shaped.
+func denseToScalar(v Value) (Scalar, bool) {
+	d, ok := v.(*tensor.Dense)
+	if !ok || !d.IsScalar() {
+		return nil, false
+	}
+	s, _ := anyToScalar(d.ScalarValue())
+	return s, true
+}
+
 func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 	if err = checkArity(o, len(vals)); err != nil {
 		return
 	}
 
-	at := TypeOf(vals[0])
-	bt := TypeOf(vals[1])
+	v0, v1 := vals[0], vals[1]
+	if s, ok := denseToScalar(v0); ok {
+		v0 = s
+	}
+	if s, ok := denseToScalar(v1); ok {
+		v1 = s
+	}
+
+	at := TypeOf(v0)
+	bt := TypeOf(v1)
 	if !at.Eq(bt) {
 		err = errors.Errorf("Type Mismatch: %v != %v", at, bt)
 		return
 	}
 
 	var r interface{} // float or bool only plz
-	switch a := vals[0].(type) {
+	switch a := v0.(type) {
 	case *F64:
-		b := vals[1].(*F64)
+		b := v1.(*F64)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewF64(a.any() + b.any())
@@ -89,7 +112,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 		}
 
 	case *F32:
-		b := vals[1].(*F32)
+		b := v1.(*F32)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewF32(a.any() + b.any())
@@ -126,7 +149,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 		}
 
 	case *I:
-		b := vals[1].(*I)
+		b := v1.(*I)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewI(a.any() + b.any())
@@ -162,7 +185,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 			}
 		}
 	case *I32:
-		b := vals[1].(*I32)
+		b := v1.(*I32)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewI32(a.any() + b.any())
@@ -198,7 +221,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 			}
 		}
 	case *I64:
-		b := vals[1].(*I64)
+		b := v1.(*I64)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewI64(a.any() + b.any())
@@ -234,7 +257,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 			}
 		}
 	case *U8:
-		b := vals[1].(*U8)
+		b := v1.(*U8)
 		switch o.ʘBinaryOperatorType {
 		case addOpType:
 			r = NewU8(a.any() + b.any())
@@ -270,7 +293,7 @@ func (o scalarBinOp) Do(same bool, vals ...Value) (retVal Value, err error) {
 			}
 		}
 	case *B:
-		b := vals[1].(*B)
+		b := v1.(*B)
 		switch o.ʘBinaryOperatorType {
 		case eqOpType:
 			r = NewB(a.any() == b.any())
